@@ -82,53 +82,168 @@ Furthermore you can group the output by the same filters (host, paths, tags):
     1 snapshots
 
 
-Checking a repo's integrity and consistency
-===========================================
+Copying snapshots between repositories
+======================================
 
-Imagine your repository is saved on a server that has a faulty hard
-drive, or even worse, attackers get privileged access and modify your
-backup with the intention to make you restore malicious data:
+In case you want to transfer snapshots between two repositories, for
+example from a local to a remote repository, you can use the ``copy`` command:
 
 .. code-block:: console
 
-    $ echo "boom" >> backup/index/d795ffa99a8ab8f8e42cec1f814df4e48b8f49129360fb57613df93739faee97
+    $ restic -r /srv/restic-repo copy --repo2 /srv/restic-repo-copy
+    repository d6504c63 opened successfully, password is correct
+    repository 3dd0878c opened successfully, password is correct
 
-In order to detect these things, it is a good idea to regularly use the
-``check`` command to test whether everything is alright, your precious
-backup data is consistent and the integrity is unharmed:
+    snapshot 410b18a2 of [/home/user/work] at 2020-06-09 23:15:57.305305 +0200 CEST)
+      copy started, this may take a while...
+    snapshot 7a746a07 saved
+
+    snapshot 4e5d5487 of [/home/user/work] at 2020-05-01 22:44:07.012113 +0200 CEST)
+    skipping snapshot 4e5d5487, was already copied to snapshot 50eb62b7
+
+The example command copies all snapshots from the source repository
+``/srv/restic-repo`` to the destination repository ``/srv/restic-repo-copy``.
+Snapshots which have previously been copied between repositories will
+be skipped by later copy runs.
+
+.. note:: Note that this process will have to read (download) and write (upload) the
+    entire snapshot(s) due to the different encryption keys used in the source and
+    destination repository. Also, the transferred files are not re-chunked, which
+    may break deduplication between files already stored in the destination repo
+    and files copied there using this command. See the next section for how to avoid
+    this problem.
+
+For the destination repository ``--repo2`` the password can be read from
+a file ``--password-file2`` or from a command ``--password-command2``.
+Alternatively the environment variables ``$RESTIC_PASSWORD_COMMAND2`` and
+``$RESTIC_PASSWORD_FILE2`` can be used. It is also possible to directly
+pass the password via ``$RESTIC_PASSWORD2``. The key which should be used
+for decryption can be selected by passing its ID via the flag ``--key-hint2``
+or the environment variable ``$RESTIC_KEY_HINT2``.
+
+In case the source and destination repository use the same backend, then
+configuration options and environment variables to configure the backend
+apply to both repositories. For example it might not be possible to specify
+different accounts for the source and destination repository. You can
+avoid this limitation by using the rclone backend along with remotes which
+are configured in rclone.
+
+The list of snapshots to copy can be filtered by host, path in the backup
+and / or a comma-separated tag list:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo copy --repo2 /srv/restic-repo-copy --host luigi --path /srv --tag foo,bar
+
+It is also possible to explicitly specify the list of snapshots to copy, in
+which case only these instead of all snapshots will be copied:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo copy --repo2 /srv/restic-repo-copy 410b18a2 4e5d5487 latest
+
+
+Ensuring deduplication for copied snapshots
+-------------------------------------------
+
+Even though the copy command can transfer snapshots between arbitrary repositories,
+deduplication between snapshots from the source and destination repository may not work.
+To ensure proper deduplication, both repositories have to use the same parameters for
+splitting large files into smaller chunks, which requires additional setup steps. With
+the same parameters restic will for both repositories split identical files into
+identical chunks and therefore deduplication also works for snapshots copied between
+these repositories.
+
+The chunker parameters are generated once when creating a new (destination) repository.
+That is for a copy destination repository we have to instruct restic to initialize it
+using the same chunker parameters as the source repository:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo-copy init --repo2 /srv/restic-repo --copy-chunker-params
+
+Note that it is not possible to change the chunker parameters of an existing repository.
+
+
+Checking integrity and consistency
+==================================
+
+Imagine your repository is saved on a server that has a faulty hard
+drive, or even worse, attackers get privileged access and modify the
+files in your repository with the intention to make you restore
+malicious data:
+
+.. code-block:: console
+
+    $ echo "boom" > /srv/restic-repo/index/de30f3231ca2e6a59af4aa84216dfe2ef7339c549dc11b09b84000997b139628
+
+Trying to restore a snapshot which has been modified as shown above
+will yield an error:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo --no-cache restore c23e491f --target /tmp/restore-work
+    ...
+    Fatal: unable to load index de30f323: load <index/de30f3231c>: invalid data returned
+
+In order to detect these things before they become a problem, it's a
+good idea to regularly use the ``check`` command to test whether your
+repository is healthy and consistent, and that your precious backup
+data is unharmed. There are two types of checks that can be performed:
+
+- Structural consistency and integrity, e.g. snapshots, trees and pack files (default)
+- Integrity of the actual data that you backed up (enabled with flags, see below)
+
+To verify the structure of the repository, issue the ``check`` command.
+If the repository is damaged like in the example above, ``check`` will
+detect this and yield the same error as when you tried to restore:
 
 .. code-block:: console
 
     $ restic -r /srv/restic-repo check
-    Load indexes
-    ciphertext verification failed
+    ...
+    load indexes
+    error: error loading index de30f323: load <index/de30f3231c>: invalid data returned
+    Fatal: LoadIndex returned errors
 
-Trying to restore a snapshot which has been modified as shown above will
-yield the same error:
+If the repository structure is intact, restic will show that no errors were found:
 
 .. code-block:: console
 
-    $ restic -r /srv/restic-repo restore 79766175 --target /tmp/restore-work
-    Load indexes
-    ciphertext verification failed
+    $ restic -r /src/restic-repo check
+    ...
+    load indexes
+    check all packs
+    check snapshots, trees and blobs
+    no errors were found
 
-By default, ``check`` command does not check that repository data files 
-are unmodified. Use ``--read-data`` parameter to check all repository
-data files:
+By default, the ``check`` command does not verify that the actual pack files
+on disk in the repository are unmodified, because doing so requires reading
+a copy of every pack file in the repository. To tell restic to also verify the
+integrity of the pack files in the repository, use the ``--read-data`` flag:
 
 .. code-block:: console
 
     $ restic -r /srv/restic-repo check --read-data
+    ...
     load indexes
     check all packs
     check snapshots, trees and blobs
     read all data
+    [0:00] 100.00%  3 / 3 items
+    duration: 0:00
+    no errors were found
 
-Use ``--read-data-subset=n/t`` parameter to check subset of repository data
-files. The parameter takes two values, ``n`` and ``t``. All repository data 
-files are logically divided in ``t`` roughly equal groups and only files that
-belong to the group number ``n`` are checked. For example, the following 
-commands check all repository data files over 5 separate invocations:
+.. note:: Since ``--read-data`` has to download all pack files in the
+    repository, beware that it might incur higher bandwidth costs than usual
+    and also that it takes more time than the default ``check``.
+
+Alternatively, use the ``--read-data-subset=n/t`` parameter to check only a
+subset of the repository pack files at a time. The parameter takes two values,
+``n`` and ``t``. When the check command runs, all pack files in the repository
+are logically divided in ``t`` (roughly equal) groups, and only files that
+belong to group number ``n`` are checked. For example, the following commands
+check all repository pack files over 5 separate invocations:
 
 .. code-block:: console
 
@@ -137,4 +252,3 @@ commands check all repository data files over 5 separate invocations:
     $ restic -r /srv/restic-repo check --read-data-subset=3/5
     $ restic -r /srv/restic-repo check --read-data-subset=4/5
     $ restic -r /srv/restic-repo check --read-data-subset=5/5
-

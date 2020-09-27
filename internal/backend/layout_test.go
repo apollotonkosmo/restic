@@ -25,7 +25,7 @@ func TestDefaultLayout(t *testing.T) {
 		{
 			tempdir,
 			filepath.Join,
-			restic.Handle{Type: restic.DataFile, Name: "0123456"},
+			restic.Handle{Type: restic.PackFile, Name: "0123456"},
 			filepath.Join(tempdir, "data", "01", "0123456"),
 		},
 		{
@@ -61,7 +61,7 @@ func TestDefaultLayout(t *testing.T) {
 		{
 			"",
 			path.Join,
-			restic.Handle{Type: restic.DataFile, Name: "0123456"},
+			restic.Handle{Type: restic.PackFile, Name: "0123456"},
 			"data/01/0123456",
 		},
 		{
@@ -116,8 +116,8 @@ func TestDefaultLayout(t *testing.T) {
 			want = append(want, filepath.Join(tempdir, "data", fmt.Sprintf("%02x", i)))
 		}
 
-		sort.Sort(sort.StringSlice(want))
-		sort.Sort(sort.StringSlice(dirs))
+		sort.Strings(want)
+		sort.Strings(dirs)
 
 		if !reflect.DeepEqual(dirs, want) {
 			t.Fatalf("wrong paths returned, want:\n  %v\ngot:\n  %v", want, dirs)
@@ -148,7 +148,7 @@ func TestRESTLayout(t *testing.T) {
 		filename string
 	}{
 		{
-			restic.Handle{Type: restic.DataFile, Name: "0123456"},
+			restic.Handle{Type: restic.PackFile, Name: "0123456"},
 			filepath.Join(path, "data", "0123456"),
 		},
 		{
@@ -189,8 +189,8 @@ func TestRESTLayout(t *testing.T) {
 			filepath.Join(path, "keys"),
 		}
 
-		sort.Sort(sort.StringSlice(want))
-		sort.Sort(sort.StringSlice(dirs))
+		sort.Strings(want)
+		sort.Strings(dirs)
 
 		if !reflect.DeepEqual(dirs, want) {
 			t.Fatalf("wrong paths returned, want:\n  %v\ngot:\n  %v", want, dirs)
@@ -216,7 +216,7 @@ func TestRESTLayoutURLs(t *testing.T) {
 	}{
 		{
 			&RESTLayout{URL: "https://hostname.foo", Path: "", Join: path.Join},
-			restic.Handle{Type: restic.DataFile, Name: "foobar"},
+			restic.Handle{Type: restic.PackFile, Name: "foobar"},
 			"https://hostname.foo/data/foobar",
 			"https://hostname.foo/data/",
 		},
@@ -234,7 +234,7 @@ func TestRESTLayoutURLs(t *testing.T) {
 		},
 		{
 			&S3LegacyLayout{URL: "https://hostname.foo", Path: "/", Join: path.Join},
-			restic.Handle{Type: restic.DataFile, Name: "foobar"},
+			restic.Handle{Type: restic.PackFile, Name: "foobar"},
 			"https://hostname.foo/data/foobar",
 			"https://hostname.foo/data/",
 		},
@@ -252,7 +252,7 @@ func TestRESTLayoutURLs(t *testing.T) {
 		},
 		{
 			&S3LegacyLayout{URL: "", Path: "", Join: path.Join},
-			restic.Handle{Type: restic.DataFile, Name: "foobar"},
+			restic.Handle{Type: restic.PackFile, Name: "foobar"},
 			"data/foobar",
 			"data/",
 		},
@@ -294,7 +294,7 @@ func TestS3LegacyLayout(t *testing.T) {
 		filename string
 	}{
 		{
-			restic.Handle{Type: restic.DataFile, Name: "0123456"},
+			restic.Handle{Type: restic.PackFile, Name: "0123456"},
 			filepath.Join(path, "data", "0123456"),
 		},
 		{
@@ -335,8 +335,8 @@ func TestS3LegacyLayout(t *testing.T) {
 			filepath.Join(path, "key"),
 		}
 
-		sort.Sort(sort.StringSlice(want))
-		sort.Sort(sort.StringSlice(dirs))
+		sort.Strings(want)
+		sort.Strings(dirs)
 
 		if !reflect.DeepEqual(dirs, want) {
 			t.Fatalf("wrong paths returned, want:\n  %v\ngot:\n  %v", want, dirs)
@@ -419,8 +419,8 @@ func TestParseLayout(t *testing.T) {
 			}
 
 			// test that the functions work (and don't panic)
-			_ = layout.Dirname(restic.Handle{Type: restic.DataFile})
-			_ = layout.Filename(restic.Handle{Type: restic.DataFile, Name: "1234"})
+			_ = layout.Dirname(restic.Handle{Type: restic.PackFile})
+			_ = layout.Filename(restic.Handle{Type: restic.PackFile, Name: "1234"})
 			_ = layout.Paths()
 
 			layoutName := fmt.Sprintf("%T", layout)

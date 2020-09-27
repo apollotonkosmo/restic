@@ -83,7 +83,7 @@ You can even backup individual files in the same repository (not passing
     snapshot 249d0210 saved
 
 If you're interested in what restic does, pass ``--verbose`` twice (or
-``--verbose 2``) to display detailed information about each file and directory
+``--verbose=2``) to display detailed information about each file and directory
 restic encounters:
 
 .. code-block:: console
@@ -132,8 +132,8 @@ Now is a good time to run ``restic check`` to verify that all data
 is properly stored in the repository. You should run this command regularly
 to make sure the internal structure of the repository is free of errors.
 
-Including and Excluding Files
-*****************************
+Excluding Files
+***************
 
 You can exclude folders and files by specifying exclude patterns, currently
 the exclude options are:
@@ -142,9 +142,13 @@ the exclude options are:
 -  ``--iexclude`` Same as ``--exclude`` but ignores the case of paths
 -  ``--exclude-caches`` Specified once to exclude folders containing a special file
 -  ``--exclude-file`` Specified one or more times to exclude items listed in a given file
--  ``--exclude-if-present foo`` Specified one or more times to exclude a folder's content if it contains a file called ``foo``` (optionally having a given header, no wildcards for the file name supported)
+-  ``--iexclude-file`` Same as ``exclude-file`` but ignores cases like in ``--iexclude``
+-  ``--exclude-if-present foo`` Specified one or more times to exclude a folder's content if it contains a file called ``foo`` (optionally having a given header, no wildcards for the file name supported)
+-  ``--exclude-larger-than size`` Specified once to excludes files larger than the given size
 
- Let's say we have a file called ``excludes.txt`` with the following content:
+Please see ``restic help backup`` for more specific information about each exclude option.
+
+Let's say we have a file called ``excludes.txt`` with the following content:
 
 ::
 
@@ -159,34 +163,31 @@ It can be used like this:
 
     $ restic -r /srv/restic-repo backup ~/work --exclude="*.c" --exclude-file=excludes.txt
 
-This instruct restic to exclude files matching the following criteria:
+This instructs restic to exclude files matching the following criteria:
 
+ * All files matching ``*.c`` (parameter ``--exclude``)
  * All files matching ``*.go`` (second line in ``excludes.txt``)
  * All files and sub-directories named ``bar`` which reside somewhere below a directory called ``foo`` (fourth line in ``excludes.txt``)
- * All files matching ``*.c`` (parameter ``--exclude``)
-
-Please see ``restic help backup`` for more specific information about each exclude option.
 
 Patterns use `filepath.Glob <https://golang.org/pkg/path/filepath/#Glob>`__ internally,
 see `filepath.Match <https://golang.org/pkg/path/filepath/#Match>`__ for
 syntax. Patterns are tested against the full path of a file/dir to be saved,
-even if restic is passed a relative path to save. Environment-variables in
-exclude-files are expanded with `os.ExpandEnv <https://golang.org/pkg/os/#ExpandEnv>`__,
-so `/home/$USER/foo` will be expanded to `/home/bob/foo` for the user `bob`. To
-get a literal dollar sign, write `$$` to the file.
+even if restic is passed a relative path to save.
+
+Environment-variables in exclude files are expanded with `os.ExpandEnv <https://golang.org/pkg/os/#ExpandEnv>`__,
+so ``/home/$USER/foo`` will be expanded to ``/home/bob/foo`` for the user ``bob``.
+To get a literal dollar sign, write ``$$`` to the file. Note that tilde (``~``) expansion does not work, please use the ``$HOME`` environment variable instead.
 
 Patterns need to match on complete path components. For example, the pattern ``foo``:
 
  * matches ``/dir1/foo/dir2/file`` and ``/dir/foo``
  * does not match ``/dir/foobar`` or ``barfoo``
 
-A trailing ``/`` is ignored, a leading ``/`` anchors the
-pattern at the root directory. This means, ``/bin`` matches ``/bin/bash`` but
-does not match ``/usr/bin/restic``.
+A trailing ``/`` is ignored, a leading ``/`` anchors the pattern at the root directory.
+This means, ``/bin`` matches ``/bin/bash`` but does not match ``/usr/bin/restic``.
 
-Regular wildcards cannot be used to match over the
-directory separator ``/``. For example: ``b*ash`` matches ``/bin/bash`` but does not match
-``/bin/ash``.
+Regular wildcards cannot be used to match over the directory separator ``/``.
+For example: ``b*ash`` matches ``/bin/bash`` but does not match ``/bin/ash``.
 
 For this, the special wildcard ``**`` can be used to match arbitrary
 sub-directories: The pattern ``foo/**/bar`` matches:
@@ -195,22 +196,73 @@ sub-directories: The pattern ``foo/**/bar`` matches:
  * ``/foo/bar/file``
  * ``/tmp/foo/bar``
 
+Spaces in patterns listed in an exclude file can be specified verbatim. That is,
+in order to exclude a file named ``foo bar star.txt``, put that just as it reads
+on one line in the exclude file. Please note that beginning and trailing spaces
+are trimmed - in order to match these, use e.g. a ``*`` at the beginning or end
+of the filename.
+
+Spaces in patterns listed in the other exclude options (e.g. ``--exclude`` on the
+command line) are specified in different ways depending on the operating system
+and/or shell. Restic itself does not need any escaping, but your shell may need
+some escaping in order to pass the name/pattern as a single argument to restic.
+
+On most Unixy shells, you can either quote or use backslashes. For example:
+
+ * ``--exclude='foo bar star/foo.txt'``
+ * ``--exclude="foo bar star/foo.txt"``
+ * ``--exclude=foo\ bar\ star/foo.txt``
+
 By specifying the option ``--one-file-system`` you can instruct restic
 to only backup files from the file systems the initially specified files
-or directories reside on. For example, calling restic like this won't
-backup ``/sys`` or ``/dev`` on a Linux system:
+or directories reside on. In other words, it will prevent restic from crossing
+filesystem boundaries when performing a backup.
+
+For example, if you backup ``/`` with this option and you have external
+media mounted under ``/media/usb`` then restic will not back up ``/media/usb``
+at all because this is a different filesystem than ``/``. Virtual filesystems
+such as ``/proc`` are also considered different and thereby excluded when
+using ``--one-file-system``:
 
 .. code-block:: console
 
     $ restic -r /srv/restic-repo backup --one-file-system /
 
+Please note that this does not prevent you from specifying multiple filesystems
+on the command line, e.g:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo backup --one-file-system / /media/usb
+
+will back up both the ``/`` and ``/media/usb`` filesystems, but will not
+include other filesystems like ``/sys`` and ``/proc``.
+
 .. note:: ``--one-file-system`` is currently unsupported on Windows, and will
     cause the backup to immediately fail with an error.
 
-By using the ``--files-from`` option you can read the files you want to
-backup from one or more files. This is especially useful if a lot of files have
-to be backed up that are not in the same folder or are maybe pre-filtered
-by other software.
+Files larger than a given size can be excluded using the `--exclude-larger-than`
+option:
+
+.. code-block:: console
+
+    $ restic -r /srv/restic-repo backup ~/work --exclude-larger-than 1M
+
+This excludes files in ``~/work`` which are larger than 1 MB from the backup.
+
+The default unit for the size value is bytes, so e.g. ``--exclude-larger-than 2048``
+would exclude files larger than 2048 bytes (2 kilobytes). To specify other units,
+suffix the size value with one of ``k``/``K`` for kilobytes, ``m``/``M`` for megabytes,
+``g``/``G`` for gigabytes and ``t``/``T`` for terabytes (e.g. ``1k``, ``10K``, ``20m``,
+``20M``,  ``30g``, ``30G``, ``2t`` or ``2T``).
+
+Including Files
+***************
+
+By using the ``--files-from`` option you can read the files you want to back
+up from one or more files. This is especially useful if a lot of files have
+to be backed up that are not in the same folder or are maybe pre-filtered by
+other software.
 
 For example maybe you want to backup files which have a name that matches a
 certain pattern:
@@ -232,7 +284,11 @@ args:
 
     $ restic -r /srv/restic-repo backup --files-from /tmp/files_to_backup /tmp/some_additional_file
 
-Paths in the listing file can be absolute or relative.
+Paths in the listing file can be absolute or relative. Please note that
+patterns listed in a ``--files-from`` file are treated the same way as
+exclude patterns are, which means that beginning and trailing spaces are
+trimmed and special characters must be escaped. See the documentation
+above for more information.
 
 Comparing Snapshots
 *******************
@@ -343,21 +399,25 @@ created as it would only be written at the very (successful) end of
 the backup operation.  Previous snapshots will still be there and will still
 work.
 
-
 Environment Variables
 *********************
 
 In addition to command-line options, restic supports passing various options in
-environment variables. The following list of environment variables:
+environment variables. The following lists these environment variables:
 
 .. code-block:: console
 
     RESTIC_REPOSITORY                   Location of repository (replaces -r)
     RESTIC_PASSWORD_FILE                Location of password file (replaces --password-file)
     RESTIC_PASSWORD                     The actual password for the repository
+    RESTIC_PASSWORD_COMMAND             Command printing the password for the repository to stdout
+    RESTIC_KEY_HINT                     ID of key to try decrypting first, before other keys
+    RESTIC_CACHE_DIR                    Location of the cache directory
+    RESTIC_PROGRESS_FPS                 Frames per second by which the progress bar is updated
 
     AWS_ACCESS_KEY_ID                   Amazon S3 access key ID
     AWS_SECRET_ACCESS_KEY               Amazon S3 secret access key
+    AWS_DEFAULT_REGION                  Amazon S3 default region
 
     ST_AUTH                             Auth URL for keystone v1 authentication
     ST_USER                             Username for keystone v1 authentication
@@ -392,5 +452,33 @@ environment variables. The following list of environment variables:
 
     RCLONE_BWLIMIT                      rclone bandwidth limit
 
+In addition to restic-specific environment variables, the following system-wide environment variables
+are taken into account for various operations:
+
+ * ``$XDG_CACHE_HOME/restic``, ``$HOME/.cache/restic``: :ref:`caching`.
+ * ``$TMPDIR``: :ref:`temporary_files`.
+ * ``$PATH/fusermount``: Binary for ``restic mount``.
 
 
+Exit status codes
+*****************
+
+Restic returns one of the following exit status codes after the backup command is run:
+
+ * 0 when the backup was successful (snapshot with all source files created)
+ * 1 when there was a fatal error (no snapshot created)
+ * 3 when some source files could not be read (incomplete snapshot with remaining files created)
+
+Fatal errors occur for example when restic is unable to write to the backup destination, when
+there are network connectivity issues preventing successful communication, or when an invalid
+password or command line argument is provided. When restic returns this exit status code, one
+should not expect a snapshot to have been created.
+
+Source file read errors occur when restic fails to read one or more files or directories that
+it was asked to back up, e.g. due to permission problems. Restic displays the number of source
+file read errors that occurred while running the backup. If there are errors of this type,
+restic will still try to complete the backup run with all the other files, and create a
+snapshot that then contains all but the unreadable files.
+
+One can use these exit status codes in scripts and other automation tools, to make them aware of
+the outcome of the backup run. To manually inspect the exit code in e.g. Linux, run ``echo $?``.

@@ -14,8 +14,8 @@ import (
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
 
-	"github.com/minio/minio-go"
-	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 
 	"github.com/restic/restic/internal/debug"
 )
@@ -66,7 +66,7 @@ func open(cfg Config, rt http.RoundTripper) (*Backend, error) {
 			},
 		},
 	})
-	client, err := minio.NewWithCredentials(cfg.Endpoint, creds, !cfg.UseHTTP, "")
+	client, err := minio.NewWithCredentials(cfg.Endpoint, creds, !cfg.UseHTTP, cfg.Region)
 	if err != nil {
 		return nil, errors.Wrap(err, "minio.NewWithCredentials")
 	}
@@ -231,22 +231,6 @@ func (be *Backend) Path() string {
 	return be.cfg.Prefix
 }
 
-// lenForFile returns the length of the file.
-func lenForFile(f *os.File) (int64, error) {
-	fi, err := f.Stat()
-	if err != nil {
-		return 0, errors.Wrap(err, "Stat")
-	}
-
-	pos, err := f.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return 0, errors.Wrap(err, "Seek")
-	}
-
-	size := fi.Size() - pos
-	return size, nil
-}
-
 // Save stores data in the backend at the handle.
 func (be *Backend) Save(ctx context.Context, h restic.Handle, rd restic.RewindReader) error {
 	debug.Log("Save %v", h)
@@ -321,7 +305,7 @@ func (be *Backend) openReader(ctx context.Context, h restic.Handle, length int, 
 
 	be.sem.GetToken()
 	coreClient := minio.Core{Client: be.client}
-	rd, err := coreClient.GetObjectWithContext(ctx, be.cfg.Bucket, objName, opts)
+	rd, _, _, err := coreClient.GetObjectWithContext(ctx, be.cfg.Bucket, objName, opts)
 	if err != nil {
 		be.sem.ReleaseToken()
 		return nil, err
@@ -461,7 +445,7 @@ func (be *Backend) List(ctx context.Context, t restic.FileType, fn func(restic.F
 
 // Remove keys for a specified backend type.
 func (be *Backend) removeKeys(ctx context.Context, t restic.FileType) error {
-	return be.List(ctx, restic.DataFile, func(fi restic.FileInfo) error {
+	return be.List(ctx, restic.PackFile, func(fi restic.FileInfo) error {
 		return be.Remove(ctx, restic.Handle{Type: t, Name: fi.Name})
 	})
 }
@@ -469,7 +453,7 @@ func (be *Backend) removeKeys(ctx context.Context, t restic.FileType) error {
 // Delete removes all restic keys in the bucket. It will not remove the bucket itself.
 func (be *Backend) Delete(ctx context.Context) error {
 	alltypes := []restic.FileType{
-		restic.DataFile,
+		restic.PackFile,
 		restic.KeyFile,
 		restic.LockFile,
 		restic.SnapshotFile,

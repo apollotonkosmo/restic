@@ -3,10 +3,8 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -25,6 +23,11 @@ finds. It can also be used to read all data and therefore simulate a restore.
 
 By default, the "check" command will always load all data directly from the
 repository and not use a local cache.
+
+EXIT STATUS
+===========
+
+Exit status is 0 if the command was successful, and non-zero if there was any error.
 `,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -67,10 +70,16 @@ func checkFlags(opts CheckOptions) error {
 		if dataSubset[0] == 0 || dataSubset[1] == 0 || dataSubset[0] > dataSubset[1] {
 			return errors.Fatalf("check flag --read-data-subset=n/t values must be positive integers, and n <= t, e.g. --read-data-subset=1/2")
 		}
+		if dataSubset[1] > totalBucketsMax {
+			return errors.Fatalf("check flag --read-data-subset=n/t t must be at most %d", totalBucketsMax)
+		}
 	}
 
 	return nil
 }
+
+// See doReadData in runCheck below for why this is 256.
+const totalBucketsMax = 256
 
 // stringToIntSlice converts string to []uint, using '/' as element separator
 func stringToIntSlice(param string) (split []uint, err error) {
@@ -87,36 +96,6 @@ func stringToIntSlice(param string) (split []uint, err error) {
 		result[idx] = uint(uintval)
 	}
 	return result, nil
-}
-
-func newReadProgress(gopts GlobalOptions, todo restic.Stat) *restic.Progress {
-	if gopts.Quiet {
-		return nil
-	}
-
-	readProgress := restic.NewProgress()
-
-	readProgress.OnUpdate = func(s restic.Stat, d time.Duration, ticker bool) {
-		status := fmt.Sprintf("[%s] %s  %d / %d items",
-			formatDuration(d),
-			formatPercent(s.Blobs, todo.Blobs),
-			s.Blobs, todo.Blobs)
-
-		if w := stdoutTerminalWidth(); w > 0 {
-			if len(status) > w {
-				max := w - len(status) - 4
-				status = status[:max] + "... "
-			}
-		}
-
-		PrintProgress("%s", status)
-	}
-
-	readProgress.OnDone = func(s restic.Stat, d time.Duration, ticker bool) {
-		fmt.Printf("\nduration: %s\n", formatDuration(d))
-	}
-
-	return readProgress
 }
 
 // prepareCheckCache configures a special cache directory for check.
@@ -224,7 +203,7 @@ func runCheck(opts CheckOptions, gopts GlobalOptions, args []string) error {
 			continue
 		}
 		errorsFound = true
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		Warnf("%v\n", err)
 	}
 
 	if orphanedPacks > 0 {
@@ -238,18 +217,18 @@ func runCheck(opts CheckOptions, gopts GlobalOptions, args []string) error {
 	for err := range errChan {
 		errorsFound = true
 		if e, ok := err.(checker.TreeError); ok {
-			fmt.Fprintf(os.Stderr, "error for tree %v:\n", e.ID.Str())
+			Warnf("error for tree %v:\n", e.ID.Str())
 			for _, treeErr := range e.Errors {
-				fmt.Fprintf(os.Stderr, "  %v\n", treeErr)
+				Warnf("  %v\n", treeErr)
 			}
 		} else {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			Warnf("error: %v\n", err)
 		}
 	}
 
 	if opts.CheckUnused {
 		for _, id := range chkr.UnusedBlobs() {
-			Verbosef("unused blob %v\n", id.Str())
+			Verbosef("unused blob %v\n", id)
 			errorsFound = true
 		}
 	}
@@ -257,6 +236,8 @@ func runCheck(opts CheckOptions, gopts GlobalOptions, args []string) error {
 	doReadData := func(bucket, totalBuckets uint) {
 		packs := restic.IDSet{}
 		for pack := range chkr.GetPacks() {
+			// If we ever check more than the first byte
+			// of pack, update totalBucketsMax.
 			if (uint(pack[0]) % totalBuckets) == (bucket - 1) {
 				packs.Insert(pack)
 			}
@@ -269,14 +250,14 @@ func runCheck(opts CheckOptions, gopts GlobalOptions, args []string) error {
 			Verbosef("read all data\n")
 		}
 
-		p := newReadProgress(gopts, restic.Stat{Blobs: packCount})
+		p := newProgressMax(!gopts.Quiet, packCount, "packs")
 		errChan := make(chan error)
 
 		go chkr.ReadPacks(gopts.ctx, packs, p, errChan)
 
 		for err := range errChan {
 			errorsFound = true
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+			Warnf("%v\n", err)
 		}
 	}
 

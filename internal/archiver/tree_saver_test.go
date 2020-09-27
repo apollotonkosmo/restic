@@ -17,7 +17,7 @@ func TestTreeSaver(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var tmb tomb.Tomb
+	tmb, ctx := tomb.WithContext(ctx)
 
 	saveFn := func(context.Context, *restic.Tree) (restic.ID, ItemStats, error) {
 		return restic.NewRandomID(), ItemStats{TreeBlobs: 1, TreeSize: 123}, nil
@@ -27,7 +27,7 @@ func TestTreeSaver(t *testing.T) {
 		return nil
 	}
 
-	b := NewTreeSaver(ctx, &tmb, uint(runtime.NumCPU()), saveFn, errFn)
+	b := NewTreeSaver(ctx, tmb, uint(runtime.NumCPU()), saveFn, errFn)
 
 	var results []FutureTree
 
@@ -36,7 +36,7 @@ func TestTreeSaver(t *testing.T) {
 			Name: fmt.Sprintf("file-%d", i),
 		}
 
-		fb := b.Save(ctx, "/", node, nil)
+		fb := b.Save(ctx, "/", node, nil, nil)
 		results = append(results, fb)
 	}
 
@@ -71,7 +71,7 @@ func TestTreeSaverError(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			var tmb tomb.Tomb
+			tmb, ctx := tomb.WithContext(ctx)
 
 			var num int32
 			saveFn := func(context.Context, *restic.Tree) (restic.ID, ItemStats, error) {
@@ -88,7 +88,7 @@ func TestTreeSaverError(t *testing.T) {
 				return nil
 			}
 
-			b := NewTreeSaver(ctx, &tmb, uint(runtime.NumCPU()), saveFn, errFn)
+			b := NewTreeSaver(ctx, tmb, uint(runtime.NumCPU()), saveFn, errFn)
 
 			var results []FutureTree
 
@@ -97,7 +97,7 @@ func TestTreeSaverError(t *testing.T) {
 					Name: fmt.Sprintf("file-%d", i),
 				}
 
-				fb := b.Save(ctx, "/", node, nil)
+				fb := b.Save(ctx, "/", node, nil, nil)
 				results = append(results, fb)
 			}
 

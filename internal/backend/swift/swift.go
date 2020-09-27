@@ -17,8 +17,6 @@ import (
 	"github.com/ncw/swift"
 )
 
-const connLimit = 10
-
 // beSwift is a backend which stores the data on a swift endpoint.
 type beSwift struct {
 	conn      *swift.Connection
@@ -300,7 +298,7 @@ func (be *beSwift) IsNotExist(err error) bool {
 // It will not remove the container itself.
 func (be *beSwift) Delete(ctx context.Context) error {
 	alltypes := []restic.FileType{
-		restic.DataFile,
+		restic.PackFile,
 		restic.KeyFile,
 		restic.LockFile,
 		restic.SnapshotFile,

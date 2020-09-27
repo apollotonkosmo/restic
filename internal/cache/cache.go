@@ -17,14 +17,14 @@ import (
 
 // Cache manages a local cache.
 type Cache struct {
-	Path             string
+	path             string
 	Base             string
 	Created          bool
 	PerformReadahead func(restic.Handle) bool
 }
 
 const dirMode = 0700
-const fileMode = 0600
+const fileMode = 0644
 
 func readVersion(dir string) (v uint, err error) {
 	buf, err := ioutil.ReadFile(filepath.Join(dir, "version"))
@@ -46,11 +46,8 @@ func readVersion(dir string) (v uint, err error) {
 
 const cacheVersion = 1
 
-// ensure Cache implements restic.Cache
-var _ restic.Cache = &Cache{}
-
 var cacheLayoutPaths = map[restic.FileType]string{
-	restic.DataFile:     "data",
+	restic.PackFile:     "data",
 	restic.SnapshotFile: "snapshots",
 	restic.IndexFile:    "index",
 }
@@ -68,7 +65,7 @@ func writeCachedirTag(dir string) error {
 		return errors.Wrap(err, "Lstat")
 	}
 
-	f, err := fs.OpenFile(tagfile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	f, err := fs.OpenFile(tagfile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, fileMode)
 	if err != nil {
 		if os.IsExist(errors.Cause(err)) {
 			return nil
@@ -138,7 +135,7 @@ func New(id string, basedir string) (c *Cache, err error) {
 	}
 
 	if v < cacheVersion {
-		err = ioutil.WriteFile(filepath.Join(cachedir, "version"), []byte(fmt.Sprintf("%d", cacheVersion)), 0644)
+		err = ioutil.WriteFile(filepath.Join(cachedir, "version"), []byte(fmt.Sprintf("%d", cacheVersion)), fileMode)
 		if err != nil {
 			return nil, errors.Wrap(err, "WriteFile")
 		}
@@ -151,7 +148,7 @@ func New(id string, basedir string) (c *Cache, err error) {
 	}
 
 	c = &Cache{
-		Path:    cachedir,
+		path:    cachedir,
 		Base:    basedir,
 		Created: created,
 		PerformReadahead: func(restic.Handle) bool {
@@ -175,11 +172,7 @@ const MaxCacheAge = 30 * 24 * time.Hour
 
 func validCacheDirName(s string) bool {
 	r := regexp.MustCompile(`^[a-fA-F0-9]{64}$`)
-	if !r.MatchString(s) {
-		return false
-	}
-
-	return true
+	return r.MatchString(s)
 }
 
 // listCacheDirs returns the list of cache directories.
@@ -255,22 +248,6 @@ func Old(basedir string) ([]os.FileInfo, error) {
 func IsOld(t time.Time, maxAge time.Duration) bool {
 	oldest := time.Now().Add(-maxAge)
 	return t.Before(oldest)
-}
-
-// errNoSuchFile is returned when a file is not cached.
-type errNoSuchFile struct {
-	Type string
-	Name string
-}
-
-func (e errNoSuchFile) Error() string {
-	return fmt.Sprintf("file %v (%v) is not cached", e.Name, e.Type)
-}
-
-// IsNotExist returns true if the error was caused by a non-existing file.
-func (c *Cache) IsNotExist(err error) bool {
-	_, ok := errors.Cause(err).(errNoSuchFile)
-	return ok
 }
 
 // Wrap returns a backend with a cache.

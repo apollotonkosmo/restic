@@ -1,17 +1,13 @@
-// +build !netbsd
-// +build !openbsd
-// +build !solaris
-// +build !windows
+// +build darwin freebsd linux
 
 package fuse
 
 import (
+	"os"
 	"time"
 
 	"github.com/restic/restic/internal/debug"
 	"github.com/restic/restic/internal/restic"
-
-	"golang.org/x/net/context"
 
 	"bazil.org/fuse/fs"
 )
@@ -19,7 +15,7 @@ import (
 // Config holds settings for the fuse mount.
 type Config struct {
 	OwnerIsRoot      bool
-	Host             string
+	Hosts            []string
 	Tags             []restic.TagList
 	Paths            []string
 	SnapshotTemplate string
@@ -27,16 +23,18 @@ type Config struct {
 
 // Root is the root node of the fuse mount of a repository.
 type Root struct {
-	repo          restic.Repository
-	cfg           Config
-	inode         uint64
-	snapshots     restic.Snapshots
-	blobSizeCache *BlobSizeCache
+	repo      restic.Repository
+	cfg       Config
+	inode     uint64
+	snapshots restic.Snapshots
+	blobCache *blobCache
 
 	snCount   int
 	lastCheck time.Time
 
 	*MetaDir
+
+	uid, gid uint32
 }
 
 // ensure that *Root implements these interfaces
@@ -45,15 +43,23 @@ var _ = fs.NodeStringLookuper(&Root{})
 
 const rootInode = 1
 
+// Size of the blob cache. TODO: make this configurable.
+const blobCacheSize = 64 << 20
+
 // NewRoot initializes a new root node from a repository.
-func NewRoot(ctx context.Context, repo restic.Repository, cfg Config) (*Root, error) {
+func NewRoot(repo restic.Repository, cfg Config) *Root {
 	debug.Log("NewRoot(), config %v", cfg)
 
 	root := &Root{
-		repo:          repo,
-		inode:         rootInode,
-		cfg:           cfg,
-		blobSizeCache: NewBlobSizeCache(ctx, repo.Index()),
+		repo:      repo,
+		inode:     rootInode,
+		cfg:       cfg,
+		blobCache: newBlobCache(blobCacheSize),
+	}
+
+	if !cfg.OwnerIsRoot {
+		root.uid = uint32(os.Getuid())
+		root.gid = uint32(os.Getgid())
 	}
 
 	entries := map[string]fs.Node{
@@ -65,7 +71,7 @@ func NewRoot(ctx context.Context, repo restic.Repository, cfg Config) (*Root, er
 
 	root.MetaDir = NewMetaDir(root, rootInode, entries)
 
-	return root, nil
+	return root
 }
 
 // Root is just there to satisfy fs.Root, it returns itself.

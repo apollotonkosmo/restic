@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/restic/restic/internal/errors"
 	"github.com/restic/restic/internal/restic"
@@ -24,25 +25,6 @@ type Local struct {
 var _ restic.Backend = &Local{}
 
 const defaultLayout = "default"
-
-// dirExists returns true if the name exists and is a directory.
-func dirExists(name string) bool {
-	f, err := fs.Open(name)
-	if err != nil {
-		return false
-	}
-
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-
-	if err = f.Close(); err != nil {
-		return false
-	}
-
-	return fi.IsDir()
-}
 
 // Open opens the local backend as specified by config.
 func Open(cfg Config) (*Local, error) {
@@ -134,8 +116,13 @@ func (b *Local) Save(ctx context.Context, h restic.Handle, rd restic.RewindReade
 	}
 
 	if err = f.Sync(); err != nil {
-		_ = f.Close()
-		return errors.Wrap(err, "Sync")
+		pathErr, ok := err.(*os.PathError)
+		isNotSupported := ok && pathErr.Op == "sync" && pathErr.Err == syscall.ENOTSUP
+		// ignore error if filesystem does not support the sync operation
+		if !isNotSupported {
+			_ = f.Close()
+			return errors.Wrap(err, "Sync")
+		}
 	}
 
 	err = f.Close()

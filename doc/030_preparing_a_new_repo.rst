@@ -43,9 +43,9 @@ command and enter the same password twice:
 .. code-block:: console
 
     $ restic init --repo /srv/restic-repo
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
-    created restic backend 085b3c76b9 at /srv/restic-repo
+    created restic repository 085b3c76b9 at /srv/restic-repo
     Please note that knowledge of your password is required to access the repository.
     Losing your password means that your data is irrecoverably lost.
 
@@ -53,6 +53,13 @@ command and enter the same password twice:
 
    Remembering your password is important! If you lose it, you won't be
    able to access data stored in the repository.
+
+.. warning::
+
+   On Linux, storing the backup repository on a CIFS (SMB) share is not
+   recommended due to compatibility issues. Either use another backend
+   or set the environment variable `GODEBUG` to `asyncpreemptoff=1`.
+   Refer to GitHub issue #2659 for further explanations.
 
 SFTP
 ****
@@ -68,9 +75,9 @@ simply be achieved by changing the URL scheme in the ``init`` command:
 .. code-block:: console
 
     $ restic -r sftp:user@host:/srv/restic-repo init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
-    created restic backend f1c6108821 at sftp:user@host:/srv/restic-repo
+    created restic repository f1c6108821 at sftp:user@host:/srv/restic-repo
     Please note that knowledge of your password is required to access the repository.
     Losing your password means that your data is irrecoverably lost.
 
@@ -78,15 +85,29 @@ You can also specify a relative (read: no slash (``/``) character at the
 beginning) directory, in this case the dir is relative to the remote
 user's home directory.
 
+Also, if the SFTP server is enforcing domain-confined users, you can
+specify the user this way: ``user@domain@host``.
+
 .. note:: Please be aware that sftp servers do not expand the tilde character
           (``~``) normally used as an alias for a user's home directory. If you
           want to specify a path relative to the user's home directory, pass a
           relative path to the sftp backend.
 
-The backend config string does not allow specifying a port. If you need
-to contact an sftp server on a different port, you can create an entry
-in the ``ssh`` file, usually located in your user's home directory at
-``~/.ssh/config`` or in ``/etc/ssh/ssh_config``:
+If you need to specify a port number or IPv6 address, you'll need to use
+URL syntax. E.g., the repository ``/srv/restic-repo`` on ``[::1]`` (localhost)
+at port 2222 with username ``user`` can be specified as
+
+::
+
+    sftp://user@[::1]:2222//srv/restic-repo
+
+Note the double slash: the first slash separates the connection settings from
+the path, while the second is the start of the path. To specify a relative
+path, use one slash.
+
+Alternatively, you can create an entry in the ``ssh`` configuration file,
+usually located in your home directory at ``~/.ssh/config`` or in
+``/etc/ssh/ssh_config``:
 
 ::
 
@@ -191,16 +212,17 @@ default location:
 .. code-block:: console
 
     $ restic -r s3:s3.amazonaws.com/bucket_name init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
-    created restic backend eefee03bbd at s3:s3.amazonaws.com/bucket_name
+    created restic repository eefee03bbd at s3:s3.amazonaws.com/bucket_name
     Please note that knowledge of your password is required to access the repository.
     Losing your password means that your data is irrecoverably lost.
 
-It is not possible at the moment to have restic create a new bucket in a
-different location, so you need to create it using a different program.
-Afterwards, the S3 server (``s3.amazonaws.com``) will redirect restic to
-the correct endpoint.
+If needed, you can manually specify the region to use by either setting the
+environment variable ``AWS_DEFAULT_REGION`` or calling restic with an option
+parameter like ``-o s3.region="us-east-1"``. If the region is not specified,
+the default region is used. Afterwards, the S3 server (at least for AWS,
+``s3.amazonaws.com``) will redirect restic to the correct endpoint.
 
 Until version 0.8.0, restic used a default prefix of ``restic``, so the files
 in the bucket were placed in a directory named ``restic``. If you want to
@@ -234,15 +256,44 @@ credentials of your Minio Server.
     $ export AWS_ACCESS_KEY_ID=<YOUR-MINIO-ACCESS-KEY-ID>
     $ export AWS_SECRET_ACCESS_KEY= <YOUR-MINIO-SECRET-ACCESS-KEY>
 
-Now you can easily initialize restic to use Minio server as backend with
+Now you can easily initialize restic to use Minio server as a backend with
 this command.
 
 .. code-block:: console
 
     $ ./restic -r s3:http://localhost:9000/restic init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
-    created restic backend 6ad29560f5 at s3:http://localhost:9000/restic1
+    created restic repository 6ad29560f5 at s3:http://localhost:9000/restic1
+    Please note that knowledge of your password is required to access
+    the repository. Losing your password means that your data is irrecoverably lost.
+
+Wasabi
+************
+
+`Wasabi <https://wasabi.com>`__ is a low cost AWS S3 conformant object storage provider.
+Due to it's S3 conformance, Wasabi can be used as a storage provider for a restic repository.
+
+-  Create a Wasabi bucket using the `Wasabi Console <https://console.wasabisys.com>`__.
+-  Determine the correct Wasabi service URL for your bucket `here <https://wasabi-support.zendesk.com/hc/en-us/articles/360015106031-What-are-the-service-URLs-for-Wasabi-s-different-regions->`__.
+
+You must first setup the following environment variables with the
+credentials of your Wasabi account.
+
+.. code-block:: console
+
+    $ export AWS_ACCESS_KEY_ID=<YOUR-WASABI-ACCESS-KEY-ID>
+    $ export AWS_SECRET_ACCESS_KEY=<YOUR-WASABI-SECRET-ACCESS-KEY>
+
+Now you can easily initialize restic to use Wasabi as a backend with
+this command.
+
+.. code-block:: console
+
+    $ ./restic -r s3:https://<WASABI-SERVICE-URL>/<WASABI-BUCKET-NAME> init
+    enter password for new repository:
+    enter password again:
+    created restic repository xxxxxxxxxx at s3:https://<WASABI-SERVICE-URL>/<WASABI-BUCKET-NAME>
     Please note that knowledge of your password is required to access
     the repository. Losing your password means that your data is irrecoverably lost.
 
@@ -306,9 +357,9 @@ the container does not exist, it will be created automatically:
 .. code-block:: console
 
    $ restic -r swift:container_name:/path init   # path is optional
-   enter password for new backend:
+   enter password for new repository:
    enter password again:
-   created restic backend eefee03bbd at swift:container_name:/path
+   created restic repository eefee03bbd at swift:container_name:/path
    Please note that knowledge of your password is required to access the repository.
    Losing your password means that your data is irrecoverably lost.
 
@@ -329,9 +380,9 @@ dashboard on the "Buckets" page when signed into your B2 account:
 .. code-block:: console
 
     $ export B2_ACCOUNT_ID=<MY_APPLICATION_KEY_ID>
-    $ export B2_ACCOUNT_KEY=<MY_SECRET_ACCOUNT_KEY>
+    $ export B2_ACCOUNT_KEY=<MY_APPLICATION_KEY>
 
-.. note:: In case you want to use Backblaze Application Keys replace <MY_APPLICATION_KEY_ID> and <MY_SECRET_ACCOUNT_KEY> with <applicationKeyId> and <applicationKey> respectively.
+.. note:: As of version 0.9.2, restic supports both master and non-master `application keys <https://www.backblaze.com/b2/docs/application_keys.html>`__. If using a non-master application key, ensure that it is created with at least **read and write** access to the B2 bucket. On earlier versions of restic, a master application key is required.
 
 You can then initialize a repository stored at Backblaze B2. If the
 bucket does not exist yet and the credentials you passed to restic have the
@@ -340,9 +391,9 @@ privilege to create buckets, it will be created automatically:
 .. code-block:: console
 
     $ restic -r b2:bucketname:path/to/repo init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
-    created restic backend eefee03bbd at b2:bucketname:path/to/repo
+    created restic repository eefee03bbd at b2:bucketname:path/to/repo
     Please note that knowledge of your password is required to access the repository.
     Losing your password means that your data is irrecoverably lost.
 
@@ -369,10 +420,10 @@ root path like this:
 .. code-block:: console
 
     $ restic -r azure:foo:/ init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
 
-    created restic backend a934bac191 at azure:foo:/
+    created restic repository a934bac191 at azure:foo:/
     [...]
 
 The number of concurrent connections to the Azure Blob Storage service can be set with the
@@ -413,10 +464,10 @@ repository in the bucket ``foo`` at the root path:
 .. code-block:: console
 
     $ restic -r gs:foo:/ init
-    enter password for new backend:
+    enter password for new repository:
     enter password again:
 
-    created restic backend bde47d6254 at gs:foo2/
+    created restic repository bde47d6254 at gs:foo2/
     [...]
 
 The number of concurrent connections to the GCS service can be set with the

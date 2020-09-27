@@ -46,14 +46,11 @@ Remember, the easier it is for us to reproduce the bug, the earlier it will be
 corrected!
 
 In addition, you can compile restic with debug support by running
-`go run -mod=vendor build.go -tags debug` and instructing it to create a debug
+`go run build.go -tags debug` and instructing it to create a debug
 log by setting the environment variable `DEBUG_LOG` to a file, e.g. like this:
 
     $ export DEBUG_LOG=/tmp/restic-debug.log
     $ restic backup ~/work
-
-For Go < 1.11, you need to remove the `-mod=vendor` option from the build
-command.
 
 Please be aware that the debug log file will contain potentially sensitive
 things like file and directory names, so please either redact it before
@@ -63,16 +60,11 @@ uploading it somewhere or post only the parts that are really relevant.
 Development Environment
 =======================
 
-The repository contains several sets of directories with code: `cmd/` and
-`internal/` contain the code written for restic, whereas `vendor/` contains
-copies of libraries restic depends on. The libraries are managed with the
-command `go mod vendor`.
+The repository contains the code written for restic in the directories
+`cmd/` and `internal/`.
 
-Go >= 1.11
-----------
-
-For Go version 1.11 or later, you should clone the repo (without having
-`$GOPATH` set) and `cd` into the directory:
+Restic requires Go version 1.13 or later for compiling. Clone the repo (without
+having `$GOPATH` set) and `cd` into the directory:
 
     $ unset GOPATH
     $ git clone https://github.com/restic/restic
@@ -82,37 +74,9 @@ Then use the `go` tool to build restic:
 
     $ go build ./cmd/restic
     $ ./restic version
-    restic 0.9.2-dev (compiled manually) compiled with go1.11 on linux/amd64
+    restic 0.10.0-dev (compiled manually) compiled with go1.15.2 on linux/amd64
 
 You can run all tests with the following command:
-
-    $ go test ./...
-
-Go < 1.11
----------
-
-In order to compile restic with Go before 1.11, it needs to be checked out at
-the right path within a `GOPATH`. The concept of a `GOPATH` is explained in
-["How to write Go code"](https://golang.org/doc/code.html).
-
-If you do not have a directory with Go code yet, executing the following
-instructions in your shell will create one for you and check out the restic
-repo:
-
-    $ export GOPATH="$HOME/go"
-    $ mkdir -p "$GOPATH/src/github.com/restic"
-    $ cd "$GOPATH/src/github.com/restic"
-    $ git clone https://github.com/restic/restic
-    $ cd restic
-
-You can then build restic as follows:
-
-    $ go build ./cmd/restic
-    $ ./restic version
-    restic compiled manually
-    compiled with go1.8.3 on linux/amd64
-
-The following commands can be used to run all the tests:
 
     $ go test ./...
 
@@ -128,21 +92,19 @@ down to the following steps:
     GitHub. For a new feature, please add an issue before starting to work on
     it, so that duplicate work is prevented.
 
- 1. First we would kindly ask you to fork our project on GitHub if you haven't
-    done so already.
+ 1. Next, fork our project on GitHub if you haven't done so already.
 
- 2. Clone the repository locally and create a new branch. If you are working on
-    the code itself, please set up the development environment as described in
-    the previous section. Especially take care to place your forked repository
-    at the correct path (`src/github.com/restic/restic`) within your `GOPATH`.
+ 2. Clone your fork of the repository locally and **create a new branch** for
+    your changes. If you are working on the code itself, please set up the
+    development environment as described in the previous section.
 
- 3. Then commit your changes as fine grained as possible, as smaller patches,
-    that handle one and only one issue are easier to discuss and merge.
+ 3. Commit your changes to the new branch as fine grained as possible, as
+    smaller patches, for individual changes, are easier to discuss and merge.
 
  4. Push the new branch with your changes to your fork of the repository.
 
  5. Create a pull request by visiting the GitHub website, it will guide you
-    through the process.
+    through the process. Please [allow edits from maintainers](https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/allowing-changes-to-a-pull-request-branch-created-from-a-fork).
 
  6. You will receive comments on your code and the feature or bug that they
     address. Maybe you need to rework some minor things, in this case push new
@@ -150,17 +112,19 @@ down to the following steps:
     existing commit, use common sense to decide which is better), they will be
     automatically added to the pull request.
 
- 7. If your pull request changes anything that users should be aware of (a
-    bugfix, a new feature, ...) please add an entry to the file
-    ['CHANGELOG.md'](CHANGELOG.md). It will be used in the announcement of the
-    next stable release. While writing, ask yourself: If I were the user, what
-    would I need to be aware of with this change.
+ 7. If your pull request changes anything that users should be aware of
+    (a bugfix, a new feature, ...) please add an entry as a new file in
+    `changelog/unreleased` including the issue number in the filename (e.g.
+    `issue-8756`). Use the template in `changelog/TEMPLATE` for the content.
+    It will be used in the announcement of the next stable release. While
+    writing, ask yourself: If I were the user, what would I need to be aware
+    of with this change?
 
  8. Once your code looks good and passes all the tests, we'll merge it. Thanks
     a lot for your contribution!
 
 Please provide the patches for each bug or feature in a separate branch and
-open up a pull request for each.
+open up a pull request for each, as this simplifies discussion and merging.
 
 The restic project uses the `gofmt` tool for Go source indentation, so please
 run

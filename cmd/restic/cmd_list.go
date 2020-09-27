@@ -1,20 +1,23 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/restic/restic/internal/errors"
-	"github.com/restic/restic/internal/index"
+	"github.com/restic/restic/internal/repository"
 	"github.com/restic/restic/internal/restic"
 
 	"github.com/spf13/cobra"
 )
 
 var cmdList = &cobra.Command{
-	Use:   "list [blobs|packs|index|snapshots|keys|locks]",
+	Use:   "list [flags] [blobs|packs|index|snapshots|keys|locks]",
 	Short: "List objects in the repository",
 	Long: `
 The "list" command allows listing objects in the repository based on type.
+
+EXIT STATUS
+===========
+
+Exit status is 0 if the command was successful, and non-zero if there was any error.
 `,
 	DisableAutoGenTag: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -47,7 +50,7 @@ func runList(cmd *cobra.Command, opts GlobalOptions, args []string) error {
 	var t restic.FileType
 	switch args[0] {
 	case "packs":
-		t = restic.DataFile
+		t = restic.PackFile
 	case "index":
 		t = restic.IndexFile
 	case "snapshots":
@@ -57,18 +60,17 @@ func runList(cmd *cobra.Command, opts GlobalOptions, args []string) error {
 	case "locks":
 		t = restic.LockFile
 	case "blobs":
-		idx, err := index.Load(opts.ctx, repo, nil)
-		if err != nil {
-			return err
-		}
-
-		for _, pack := range idx.Packs {
-			for _, entry := range pack.Entries {
-				fmt.Printf("%v %v\n", entry.Type, entry.ID)
+		return repo.List(opts.ctx, restic.IndexFile, func(id restic.ID, size int64) error {
+			idx, err := repository.LoadIndex(opts.ctx, repo, id)
+			if err != nil {
+				return err
 			}
-		}
+			for blobs := range idx.Each(opts.ctx) {
+				Printf("%v %v\n", blobs.Type, blobs.ID)
+			}
+			return nil
+		})
 
-		return nil
 	default:
 		return errors.Fatal("invalid type")
 	}

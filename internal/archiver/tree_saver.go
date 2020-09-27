@@ -42,8 +42,7 @@ type TreeSaver struct {
 	saveTree func(context.Context, *restic.Tree) (restic.ID, ItemStats, error)
 	errFn    ErrorFunc
 
-	ch   chan<- saveTreeJob
-	done <-chan struct{}
+	ch chan<- saveTreeJob
 }
 
 // NewTreeSaver returns a new tree saver. A worker pool with treeWorkers is
@@ -53,7 +52,6 @@ func NewTreeSaver(ctx context.Context, t *tomb.Tomb, treeWorkers uint, saveTree 
 
 	s := &TreeSaver{
 		ch:       ch,
-		done:     t.Dying(),
 		saveTree: saveTree,
 		errFn:    errFn,
 	}
@@ -68,20 +66,17 @@ func NewTreeSaver(ctx context.Context, t *tomb.Tomb, treeWorkers uint, saveTree 
 }
 
 // Save stores the dir d and returns the data once it has been completed.
-func (s *TreeSaver) Save(ctx context.Context, snPath string, node *restic.Node, nodes []FutureNode) FutureTree {
+func (s *TreeSaver) Save(ctx context.Context, snPath string, node *restic.Node, nodes []FutureNode, complete CompleteFunc) FutureTree {
 	ch := make(chan saveTreeResponse, 1)
 	job := saveTreeJob{
-		snPath: snPath,
-		node:   node,
-		nodes:  nodes,
-		ch:     ch,
+		snPath:   snPath,
+		node:     node,
+		nodes:    nodes,
+		ch:       ch,
+		complete: complete,
 	}
 	select {
 	case s.ch <- job:
-	case <-s.done:
-		debug.Log("not saving tree, TreeSaver is done")
-		close(ch)
-		return FutureTree{ch: ch}
 	case <-ctx.Done():
 		debug.Log("not saving tree, context is cancelled")
 		close(ch)
@@ -92,10 +87,11 @@ func (s *TreeSaver) Save(ctx context.Context, snPath string, node *restic.Node, 
 }
 
 type saveTreeJob struct {
-	snPath string
-	nodes  []FutureNode
-	node   *restic.Node
-	ch     chan<- saveTreeResponse
+	snPath   string
+	nodes    []FutureNode
+	node     *restic.Node
+	ch       chan<- saveTreeResponse
+	complete CompleteFunc
 }
 
 type saveTreeResponse struct {
@@ -162,6 +158,9 @@ func (s *TreeSaver) worker(ctx context.Context, jobs <-chan saveTreeJob) error {
 			return err
 		}
 
+		if job.complete != nil {
+			job.complete(node, stats)
+		}
 		job.ch <- saveTreeResponse{
 			node:  node,
 			stats: stats,

@@ -19,8 +19,7 @@ import (
 type Node interface{}
 
 type Snapshot struct {
-	Nodes  map[string]Node
-	treeID restic.ID
+	Nodes map[string]Node
 }
 
 type File struct {
@@ -38,7 +37,7 @@ func saveFile(t testing.TB, repo restic.Repository, node File) restic.ID {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	id, err := repo.SaveBlob(ctx, restic.DataBlob, []byte(node.Data), restic.ID{})
+	id, _, err := repo.SaveBlob(ctx, restic.DataBlob, []byte(node.Data), restic.ID{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,11 +113,6 @@ func saveSnapshot(t testing.TB, repo restic.Repository, snapshot Snapshot) (*res
 	treeID := saveDir(t, repo, snapshot.Nodes, 1000)
 
 	err := repo.Flush(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = repo.SaveIndex(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +442,7 @@ func TestRestorerRelative(t *testing.T) {
 			tempdir, cleanup := rtest.TempDir(t)
 			defer cleanup()
 
-			cleanup = fs.TestChdir(t, tempdir)
+			cleanup = rtest.Chdir(t, tempdir)
 			defer cleanup()
 
 			errors := make(map[string]string)

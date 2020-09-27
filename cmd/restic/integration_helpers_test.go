@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -54,7 +55,7 @@ func walkDir(dir string) <-chan *dirEntry {
 	}()
 
 	// first element is root
-	_ = <-ch
+	<-ch
 
 	return ch
 }
@@ -72,26 +73,15 @@ func sameModTime(fi1, fi2 os.FileInfo) bool {
 		}
 	}
 
-	same := fi1.ModTime().Equal(fi2.ModTime())
-	if !same && (runtime.GOOS == "darwin" || runtime.GOOS == "openbsd") {
-		// Allow up to 1μs difference, because macOS <10.13 cannot restore
-		// with nanosecond precision and the current version of Go (1.9.2)
-		// does not yet support the new syscall. (#1087)
-		mt1 := fi1.ModTime()
-		mt2 := fi2.ModTime()
-		usecDiff := (mt1.Nanosecond()-mt2.Nanosecond())/1000 + (mt1.Second()-mt2.Second())*1000000
-		same = usecDiff <= 1 && usecDiff >= -1
-	}
-	return same
+	return fi1.ModTime().Equal(fi2.ModTime())
 }
 
-// directoriesEqualContents checks if both directories contain exactly the same
-// contents.
-func directoriesEqualContents(dir1, dir2 string) bool {
+// directoriesContentsDiff returns a diff between both directories. If these
+// contain exactly the same contents, then the diff is an empty string.
+func directoriesContentsDiff(dir1, dir2 string) string {
+	var out bytes.Buffer
 	ch1 := walkDir(dir1)
 	ch2 := walkDir(dir2)
-
-	changes := false
 
 	var a, b *dirEntry
 	for {
@@ -116,36 +106,27 @@ func directoriesEqualContents(dir1, dir2 string) bool {
 		}
 
 		if ch1 == nil {
-			fmt.Printf("+%v\n", b.path)
-			changes = true
+			fmt.Fprintf(&out, "+%v\n", b.path)
 		} else if ch2 == nil {
-			fmt.Printf("-%v\n", a.path)
-			changes = true
-		} else if !a.equals(b) {
+			fmt.Fprintf(&out, "-%v\n", a.path)
+		} else if !a.equals(&out, b) {
 			if a.path < b.path {
-				fmt.Printf("-%v\n", a.path)
-				changes = true
+				fmt.Fprintf(&out, "-%v\n", a.path)
 				a = nil
 				continue
 			} else if a.path > b.path {
-				fmt.Printf("+%v\n", b.path)
-				changes = true
+				fmt.Fprintf(&out, "+%v\n", b.path)
 				b = nil
 				continue
 			} else {
-				fmt.Printf("%%%v\n", a.path)
-				changes = true
+				fmt.Fprintf(&out, "%%%v\n", a.path)
 			}
 		}
 
 		a, b = nil, nil
 	}
 
-	if changes {
-		return false
-	}
-
-	return true
+	return out.String()
 }
 
 type dirStat struct {

@@ -1,6 +1,7 @@
 package archiver
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -9,6 +10,9 @@ import (
 	"github.com/restic/restic/internal/fs"
 	restictest "github.com/restic/restic/internal/test"
 )
+
+// debug.Log requires Tree.String.
+var _ fmt.Stringer = Tree{}
 
 func TestPathComponents(t *testing.T) {
 	var tests = []struct {
@@ -440,7 +444,7 @@ func TestTree(t *testing.T) {
 
 			TestCreateFiles(t, tempdir, test.src)
 
-			back := fs.TestChdir(t, tempdir)
+			back := restictest.Chdir(t, tempdir)
 			defer back()
 
 			tree, err := NewTree(fs.Local{}, test.targets)

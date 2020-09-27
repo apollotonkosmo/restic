@@ -247,8 +247,13 @@ restic is now ready to be used with AWS S3. Try to create a backup:
    ----------------------------------------------------------------------
    10fdbace  2017-03-26 16:41:50  blackbox                /home/philip/restic-demo/test.bin
 
-A snapshot was created and stored in the S3 bucket. This snapshot may now be
-restored:
+A snapshot was created and stored in the S3 bucket. By default backups to AWS S3 will use the ``STANDARD`` storage class. Available storage classes include ``STANDARD``, ``STANDARD_IA``, ``ONEZONE_IA``, ``INTELLIGENT_TIERING``, and ``REDUCED_REDUNDANCY``. A different storage class could have been specified in the above command by using ``-o`` or ``--option``:
+
+.. code-block:: console
+
+  $ ./restic backup -o s3.storage-class=REDUCED_REDUNDANCY test.bin
+
+This snapshot may now be restored:
 
 .. code-block:: console
 
@@ -306,13 +311,13 @@ the backups:
 
    root@a3e580b6369d:/# useradd -m restic
 
-Then we download and install the restic binary into the user's home
-directory.
+Then we download and install the restic binary into the user's home 
+directory (please adjust the URL to refer to the latest restic version).
 
 .. code-block:: console
 
    root@a3e580b6369d:/# mkdir ~restic/bin
-   root@a3e580b6369d:/# curl -L https://github.com/restic/restic/releases/download/v0.9.1/restic_0.9.1_linux_amd64.bz2 | bunzip2 > ~restic/bin/restic
+   root@a3e580b6369d:/# curl -L https://github.com/restic/restic/releases/download/v0.9.6/restic_0.9.6_linux_amd64.bz2 | bunzip2 > ~restic/bin/restic
 
 Before we assign any special capability to the restic binary we
 restrict its permissions so that only root and the newly created

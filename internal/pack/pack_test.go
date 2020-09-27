@@ -36,7 +36,7 @@ func newPack(t testing.TB, k *crypto.Key, lengths []int) ([]Buf, []byte, uint) {
 	}
 
 	// pack blobs
-	p := pack.NewPacker(k, nil)
+	p := pack.NewPacker(k, new(bytes.Buffer))
 	for _, b := range bufs {
 		p.Add(restic.TreeBlob, b.id, b.data)
 	}
@@ -126,7 +126,7 @@ func TestUnpackReadSeeker(t *testing.T) {
 	b := mem.New()
 	id := restic.Hash(packData)
 
-	handle := restic.Handle{Type: restic.DataFile, Name: id.String()}
+	handle := restic.Handle{Type: restic.PackFile, Name: id.String()}
 	rtest.OK(t, b.Save(context.TODO(), handle, restic.NewByteReader(packData)))
 	verifyBlobs(t, bufs, k, restic.ReaderAt(b, handle), packSize)
 }
@@ -139,7 +139,7 @@ func TestShortPack(t *testing.T) {
 	b := mem.New()
 	id := restic.Hash(packData)
 
-	handle := restic.Handle{Type: restic.DataFile, Name: id.String()}
+	handle := restic.Handle{Type: restic.PackFile, Name: id.String()}
 	rtest.OK(t, b.Save(context.TODO(), handle, restic.NewByteReader(packData)))
 	verifyBlobs(t, bufs, k, restic.ReaderAt(b, handle), packSize)
 }
